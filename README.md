@@ -85,9 +85,7 @@ Completed.
 
 **Note:** Never commit your actual JPDB connection token to a public repository.
 
-## Author
 
-Your Name
 
 ## Sources
 
