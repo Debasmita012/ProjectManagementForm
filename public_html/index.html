@@ -1,0 +1,720 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Project Management Form</title>
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet"
+          href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+
+    <!-- jQuery -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+
+    <!-- JPDB Library -->
+    <script src="https://login2explore.com/jpdb/resources/js/0.0.4/jpdb-commons.js"></script>
+
+    <style>
+        body {
+            padding-top: 20px;
+        }
+
+        h2 {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        #message {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body onload="initializeForm()">
+
+<div class="container">
+
+    <h2>Project Management Form</h2>
+    <hr>
+
+    <form id="projectForm" onsubmit="return false;">
+
+        <!-- Project ID -->
+        <div class="form-group">
+            <label for="projectId">Project ID:</label>
+            <input type="text"
+                   class="form-control"
+                   id="projectId"
+                   placeholder="Enter Project ID"
+                   onblur="checkProjectId()"
+                   onkeydown="handleProjectIdKey(event)"
+                   required>
+        </div>
+
+        <!-- Project Name -->
+        <div class="form-group">
+            <label for="projectName">Project Name:</label>
+            <input type="text"
+                   class="form-control"
+                   id="projectName"
+                   placeholder="Enter Project Name"
+                   disabled
+                   required>
+        </div>
+
+        <!-- Assigned To -->
+        <div class="form-group">
+            <label for="assignedTo">Assigned To:</label>
+            <input type="text"
+                   class="form-control"
+                   id="assignedTo"
+                   placeholder="Enter Assigned Person"
+                   disabled
+                   required>
+        </div>
+
+        <!-- Assignment Date -->
+        <div class="form-group">
+            <label for="assignmentDate">Assignment Date:</label>
+            <input type="date"
+                   class="form-control"
+                   id="assignmentDate"
+                   disabled
+                   required>
+        </div>
+
+        <!-- Deadline -->
+        <div class="form-group">
+            <label for="deadline">Deadline:</label>
+            <input type="date"
+                   class="form-control"
+                   id="deadline"
+                   disabled
+                   required>
+        </div>
+
+        <br>
+
+        <!-- Buttons -->
+        <button type="button"
+                class="btn btn-success"
+                id="saveBtn"
+                onclick="saveProject()"
+                disabled>
+            Save
+        </button>
+
+        <button type="button"
+                class="btn btn-primary"
+                id="updateBtn"
+                onclick="updateProject()"
+                disabled>
+            Update
+        </button>
+
+        <button type="button"
+                class="btn btn-danger"
+                id="resetBtn"
+                onclick="resetForm()"
+                disabled>
+            Reset
+        </button>
+
+    </form>
+
+    <div id="message"></div>
+
+</div>
+<script src="config.js"></script>
+
+<script>
+
+// ======================================
+// 1. JPDB CONFIGURATION
+// ======================================
+
+var apiBaseUrl = JPDB_CONFIG.apiBaseUrl;
+var imlPartUrl = "/api/iml";
+var irlPartUrl = "/api/irl";
+
+var dbName = JPDB_CONFIG.dbName;
+var relName = JPDB_CONFIG.relName;
+var connToken = JPDB_CONFIG.connToken;
+var currentRecordNo = null;
+var lastCheckedProjectId = "";
+
+setBaseUrl(apiBaseUrl);
+
+
+// ======================================
+// 2. INITIALIZE FORM
+// ======================================
+
+function initializeForm() {
+
+    $("#projectId").prop("disabled", false);
+
+    $("#projectName").prop("disabled", true);
+    $("#assignedTo").prop("disabled", true);
+    $("#assignmentDate").prop("disabled", true);
+    $("#deadline").prop("disabled", true);
+
+    $("#saveBtn").prop("disabled", true);
+    $("#updateBtn").prop("disabled", true);
+    $("#resetBtn").prop("disabled", true);
+
+    $("#projectId").val("");
+    $("#projectName").val("");
+    $("#assignedTo").val("");
+    $("#assignmentDate").val("");
+    $("#deadline").val("");
+
+    currentRecordNo = null;
+    lastCheckedProjectId = "";
+
+    $("#message").text("");
+
+    $("#projectId").focus();
+}
+
+
+// ======================================
+// 3. HANDLE ENTER KEY
+// ======================================
+
+function handleProjectIdKey(event) {
+
+    if (event.key === "Enter") {
+
+        event.preventDefault();
+
+        checkProjectId();
+    }
+}
+
+
+// ======================================
+// 4. EXECUTE JPDB REQUEST
+// ======================================
+
+function executeJPDBRequest(request, endpoint) {
+
+    var response = null;
+
+    try {
+
+        console.log("Sending JPDB request...");
+        console.log("Endpoint:", apiBaseUrl + endpoint);
+
+        $.ajaxSetup({
+            async: false
+        });
+
+        response = executeCommand(request, endpoint);
+
+        console.log("Raw JPDB response:", response);
+
+        // Restore normal AJAX behavior
+        $.ajaxSetup({
+            async: true
+        });
+
+        // Handle a JSON-string response if returned
+        if (typeof response === "string") {
+            response = JSON.parse(response);
+        }
+
+        return response;
+
+    } catch (error) {
+
+        $.ajaxSetup({
+            async: true
+        });
+
+        console.error("JPDB request error:", error);
+
+        $("#message").text(
+            "Request failed. Check the browser Console."
+        ).css("color", "red");
+
+        return null;
+    }
+}
+
+
+// ======================================
+// 5. ENABLE PROJECT FIELDS
+// ======================================
+
+function enableProjectFields() {
+
+    $("#projectName").prop("disabled", false);
+    $("#assignedTo").prop("disabled", false);
+    $("#assignmentDate").prop("disabled", false);
+    $("#deadline").prop("disabled", false);
+}
+
+
+// ======================================
+// 6. CHECK PROJECT ID
+// ======================================
+
+function checkProjectId() {
+
+    console.log("CHECK PROJECT ID FUNCTION CALLED");
+
+    var projectId = $("#projectId").val().trim();
+
+    if (projectId === "") {
+        return;
+    }
+
+    // Prevent duplicate lookup for the same ID
+    if (projectId === lastCheckedProjectId) {
+        return;
+    }
+
+    if (!connToken ||
+        connToken === "PASTE_YOUR_NEW_TOKEN_HERE") {
+
+        $("#message").text(
+            "Please enter your JPDB connection token in the code."
+        ).css("color", "red");
+
+        return;
+    }
+
+    lastCheckedProjectId = projectId;
+
+    // Clear previous details
+    $("#projectName").val("");
+    $("#assignedTo").val("");
+    $("#assignmentDate").val("");
+    $("#deadline").val("");
+
+    currentRecordNo = null;
+
+    // Prepare primary-key JSON
+    var jsonObj = {
+        "Project-ID": projectId
+    };
+
+    var jsonStr = JSON.stringify(jsonObj);
+
+    // Create GET_BY_KEY request
+    var getRequest = createGET_BY_KEYRequest(
+        connToken,
+        dbName,
+        relName,
+        jsonStr,
+        true,
+        true
+    );
+
+    console.log("GET_BY_KEY request:", getRequest);
+
+    // Execute request
+    var response = executeJPDBRequest(
+        getRequest,
+        irlPartUrl
+    );
+
+    console.log("JPDB lookup response:", response);
+
+    if (!response || typeof response !== "object") {
+
+        lastCheckedProjectId = "";
+
+        $("#message").text(
+            "No valid response received from JPDB."
+        ).css("color", "red");
+
+        return;
+    }
+
+    // IMPORTANT: Convert status to a number
+    var status = Number(response.status);
+
+    console.log("Response status:", status);
+    console.log("Response message:", response.message);
+
+
+    // ======================================
+    // EXISTING PROJECT FOUND
+    // ======================================
+
+    if (status === 200) {
+
+        var recordContainer = response.data;
+
+        // Parse data if it is returned as a string
+        if (typeof recordContainer === "string") {
+
+            try {
+                recordContainer = JSON.parse(recordContainer);
+            } catch (error) {
+
+                console.error("Data parsing error:", error);
+
+                $("#message").text(
+                    "Unable to read project data."
+                ).css("color", "red");
+
+                return;
+            }
+        }
+
+        if (!recordContainer ||
+            !recordContainer.record ||
+            recordContainer.rec_no === undefined) {
+
+            console.error("Unexpected record format:", response);
+
+            $("#message").text(
+                "Project response is missing record details. Check Console."
+            ).css("color", "red");
+
+            return;
+        }
+
+        var recordData = recordContainer.record;
+
+        currentRecordNo = recordContainer.rec_no;
+
+        // Fill existing project details
+        $("#projectName").val(
+            recordData["Project-Name"] || ""
+        );
+
+        $("#assignedTo").val(
+            recordData["Assigned-To"] || ""
+        );
+
+        $("#assignmentDate").val(
+            recordData["Assignment-Date"] || ""
+        );
+
+        $("#deadline").val(
+            recordData["Deadline"] || ""
+        );
+
+        // Disable primary key
+        $("#projectId").prop("disabled", true);
+
+        // Enable other fields
+        enableProjectFields();
+
+        // Enable Update and Reset
+        $("#saveBtn").prop("disabled", true);
+        $("#updateBtn").prop("disabled", false);
+        $("#resetBtn").prop("disabled", false);
+
+        $("#message").text(
+            "Existing project found. You can update its details."
+        ).css("color", "blue");
+
+        $("#projectName").focus();
+
+    }
+
+
+    // ======================================
+    // PROJECT NOT FOUND
+    // ======================================
+
+    else if (status === 400) {
+
+        var errorMessage = String(response.message || "").toLowerCase();
+
+        // Only treat a genuine not-found response as a new ID.
+        if (errorMessage.includes("not found") ||
+            errorMessage.includes("no data") ||
+            errorMessage.includes("no record") ||
+            errorMessage.includes("no matching")) {
+
+            currentRecordNo = null;
+
+            enableProjectFields();
+
+            $("#saveBtn").prop("disabled", false);
+            $("#updateBtn").prop("disabled", true);
+            $("#resetBtn").prop("disabled", false);
+
+            $("#message").text(
+                "New Project ID. Enter project details."
+            ).css("color", "green");
+
+            $("#projectName").focus();
+
+        } else {
+
+            lastCheckedProjectId = "";
+
+            $("#message").text(
+                "JPDB request error: " + response.message
+            ).css("color", "red");
+
+            console.error("JPDB error:", response);
+        }
+
+    }
+
+
+    // ======================================
+    // INVALID TOKEN OR OTHER ERROR
+    // ======================================
+
+    else {
+
+        lastCheckedProjectId = "";
+
+        $("#message").text(
+            "JPDB Error: " + status + " - " +
+            (response.message || "Unknown error")
+        ).css("color", "red");
+
+        console.error("JPDB error response:", response);
+    }
+}
+
+
+// ======================================
+// 7. VALIDATE FORM
+// ======================================
+
+function validateFormData() {
+
+    var projectId = $("#projectId").val().trim();
+    var projectName = $("#projectName").val().trim();
+    var assignedTo = $("#assignedTo").val().trim();
+
+    var assignmentDate = $("#assignmentDate").val();
+    var deadline = $("#deadline").val();
+
+    if (projectId === "") {
+
+        alert("Project ID is required");
+        $("#projectId").focus();
+
+        return false;
+    }
+
+    if (projectName === "") {
+
+        alert("Project Name is required");
+        $("#projectName").focus();
+
+        return false;
+    }
+
+    if (assignedTo === "") {
+
+        alert("Assigned To is required");
+        $("#assignedTo").focus();
+
+        return false;
+    }
+
+    if (assignmentDate === "") {
+
+        alert("Assignment Date is required");
+        $("#assignmentDate").focus();
+
+        return false;
+    }
+
+    if (deadline === "") {
+
+        alert("Deadline is required");
+        $("#deadline").focus();
+
+        return false;
+    }
+
+    if (deadline < assignmentDate) {
+
+        alert("Deadline cannot be earlier than Assignment Date");
+        $("#deadline").focus();
+
+        return false;
+    }
+
+    return true;
+}
+
+
+// ======================================
+// 8. GET PROJECT DATA
+// ======================================
+
+function getProjectData() {
+
+    var jsonObj = {
+
+        "Project-ID": $("#projectId").val().trim(),
+
+        "Project-Name": $("#projectName").val().trim(),
+
+        "Assigned-To": $("#assignedTo").val().trim(),
+
+        "Assignment-Date": $("#assignmentDate").val(),
+
+        "Deadline": $("#deadline").val()
+
+    };
+
+    return JSON.stringify(jsonObj);
+}
+
+
+// ======================================
+// 9. SAVE PROJECT
+// ======================================
+
+function saveProject() {
+
+    if (!validateFormData()) {
+        return;
+    }
+
+    if (currentRecordNo !== null) {
+
+        alert("This project already exists. Use Update.");
+
+        return;
+    }
+
+    var jsonStr = getProjectData();
+
+    // Create PUT request
+    var putRequest = createPUTRequest(
+        connToken,
+        jsonStr,
+        dbName,
+        relName
+    );
+
+    // Execute PUT request
+    var response = executeJPDBRequest(
+        putRequest,
+        imlPartUrl
+    );
+
+    if (!response) {
+        return;
+    }
+
+    console.log("Save response:", response);
+
+    if (Number(response.status) === 200) {
+
+        alert("Project saved successfully!");
+
+        resetForm();
+
+    } else {
+
+        $("#message").text(
+            "Save failed: " +
+            response.status + " - " +
+            (response.message || "Unknown error")
+        ).css("color", "red");
+    }
+}
+
+
+// ======================================
+// 10. UPDATE PROJECT
+// ======================================
+
+function updateProject() {
+
+    if (currentRecordNo === null) {
+
+        alert("No existing project selected.");
+
+        return;
+    }
+
+    if (!validateFormData()) {
+        return;
+    }
+
+    // Fields to update
+    var updateData = {
+
+        "Project-Name": $("#projectName").val().trim(),
+
+        "Assigned-To": $("#assignedTo").val().trim(),
+
+        "Assignment-Date": $("#assignmentDate").val(),
+
+        "Deadline": $("#deadline").val()
+
+    };
+
+    var jsonStr = JSON.stringify(updateData);
+
+    // Create UPDATE request
+    var updateRequest = createUPDATERecordRequest(
+        connToken,
+        jsonStr,
+        dbName,
+        relName,
+        currentRecordNo
+    );
+
+    // Execute UPDATE request
+    var response = executeJPDBRequest(
+        updateRequest,
+        imlPartUrl
+    );
+
+    if (!response) {
+        return;
+    }
+
+    console.log("Update response:", response);
+
+    if (Number(response.status) === 200) {
+
+        alert("Project updated successfully!");
+
+        resetForm();
+
+    } else {
+
+        $("#message").text(
+            "Update failed: " +
+            response.status + " - " +
+            (response.message || "Unknown error")
+        ).css("color", "red");
+    }
+}
+
+
+// ======================================
+// 11. RESET FORM
+// ======================================
+
+function resetForm() {
+
+    initializeForm();
+}
+
+</script>
+
+</body>
+</html>
